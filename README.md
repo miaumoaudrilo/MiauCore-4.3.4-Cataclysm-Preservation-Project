@@ -1,78 +1,63 @@
-# ![logo](https://community.trinitycore.org/public/style_images/1_trinitycore.png) TrinityCore
+# MiauCore 4.3.4 — Cataclysm Preservation Project
 
-## Build Status
+> **English** · [Español](#español)
 
+A preservation project for a **World of Warcraft 4.3.4 (build 15595, Cataclysm)**
+server core, based on [TrinityCore](https://www.trinitycore.org/). The goal is to
+keep a stable, playable and well-maintained Cataclysm core alive, with bug fixes
+and quality improvements on top of the original framework.
 
-4.3.4 (master) |
-:------------: |
-[![AppVeyor Status](https://ci.appveyor.com/api/projects/status/github/The-Cataclysm-Preservation-Project/TrinityCore?branch=master&svg=true)](https://ci.appveyor.com/project/Ovahlord/trinitycore) |
-[![master GCC Build status](https://github.com/The-Cataclysm-Preservation-Project/TrinityCore/actions/workflows/gcc-build.yml/badge.svg?branch=master&event=push)](https://github.com/The-Cataclysm-Preservation-Project/TrinityCore/actions?query=workflow%3AGCC+branch%3Amaster+event%3Apush) |
-[![master clang Build status](https://github.com/The-Cataclysm-Preservation-Project/TrinityCore/actions/workflows/clang-build.yml/badge.svg?branch=master&event=push)](https://github.com/The-Cataclysm-Preservation-Project/TrinityCore/actions?query=workflow%3ACLANG+branch%3Amaster+event%3Apush) |
+### What this repository contains
 
-## Introduction
+- The **base source code** of the core (`authserver`, `worldserver`, shared
+  libraries and bundled dependencies).
+- Fixes and additions made for MiauCore: spell corrections across all classes,
+  starting-zone scripting, a welcome NPC, security hardening (packet bounds
+  checks, per-IP connection limiting, anti-flood) and movement anti-cheat.
 
-TrinityCore is a *MMORPG* Framework based mostly in C++.
+### What it does **not** contain
 
-It is derived from *MaNGOS*, the *Massive Network Game Object Server*, and is
-based on the code of that project with extensive changes over time to optimize,
-improve and cleanup the codebase at the same time as improving the in-game
-mechanics and functionality.
+- **SQL** (database structure and world data) — not published here.
+- **Tools** and helper scripts.
+- **Compiled binaries** and local configuration (`*.conf` with real credentials).
 
-It is completely open source; community involvement is highly encouraged.
+### Credits & license
 
-If you wish to contribute ideas or code please visit our site linked below or
-make pull requests to our [Github repository](https://github.com/The-Cataclysm-Preservation-Project/TrinityCore).
+This project is built on **TrinityCore**, released under the **GNU GPL v2**
+(see the [`COPYING`](COPYING) and [`AUTHORS`](AUTHORS) files). All original
+copyrights and the license are preserved. MiauCore is an independent,
+non-commercial preservation effort and is **not** affiliated with Blizzard
+Entertainment or the TrinityCore project.
 
-For further information on the TrinityCore project, please visit our project
-website at [TrinityCore.org](https://www.trinitycore.org).
+---
 
-## Install
+## Español
 
-Detailed installation guides are available in the [wiki](https://www.trinitycore.info/display/tc/Installation+Guide) for
-Windows, Linux and Mac OSX.  
-You can get database from  
-https://github.com/The-Cataclysm-Preservation-Project/TrinityCore/releases
+Proyecto de preservación de un core de servidor de **World of Warcraft 4.3.4
+(build 15595, Cataclysm)**, basado en [TrinityCore](https://www.trinitycore.org/).
+El objetivo es mantener vivo un core de Cataclysm estable, jugable y bien
+cuidado, con correcciones de errores y mejoras de calidad sobre el framework
+original.
 
+### Qué contiene este repositorio
 
-## Reporting issues
+- El **código base** del core (`authserver`, `worldserver`, librerías
+  compartidas y dependencias incluidas).
+- Correcciones y añadidos de MiauCore: arreglos de hechizos de todas las clases,
+  scripting de zonas de inicio, un NPC de bienvenida, refuerzos de seguridad
+  (cotas en el parseo de paquetes, límite de conexiones por IP, anti-inundación)
+  y anti-cheat de movimiento.
 
-Issues can be reported via the [Github issue tracker](https://github.com/The-Cataclysm-Preservation-Project/TrinityCore/issues).
+### Qué **no** contiene
 
-Please take the time to review existing issues before submitting your own to
-prevent duplicates.
+- **SQL** (estructura de la base de datos y datos del mundo) — no se publica aquí.
+- **Herramientas** y scripts auxiliares.
+- **Binarios compilados** y configuración local (`*.conf` con credenciales reales).
 
-In addition, thoroughly read through the [issue tracker guide](https://www.trinitycore.org/f/topic/37-the-trinitycore-issuetracker-and-you/) to ensure
-your report contains the required information. Incorrect or poorly formed
-reports are wasteful and are subject to deletion.
+### Créditos y licencia
 
-
-## Submitting fixes
-
-Fixes are submitted as pull requests via Github. For more information on how to
-properly submit a pull request, read the [how-to: maintain a remote fork](https://www.trinitycore.org/f/topic/6037-howto-maintain-a-remote-fork-for-pull-requests-tortoisegit/).
-NOTE: if a fix is valid also for 3.3.5a/master branches submit them also to [Github](https://github.com/TrinityCore/TrinityCore)
-
-
-## Copyright
-
-License: GPL 2.0
-
-Read file [COPYING](COPYING)
-
-
-## Authors &amp; Contributors
-
-Read file [AUTHORS](AUTHORS)
-
-
-## Links
-
-[Site](https://www.trinitycore.org)
-
-[Wiki](https://trinitycore.info)
-
-[Documentation](https://www.trinitycore.net) (powered by Doxygen)
-
-[Forums](https://www.trinitycore.org/f/)
-
-[Discord](https://discord.gg/NevNbcagJX)
+Este proyecto se basa en **TrinityCore**, publicado bajo la **licencia GNU GPL v2**
+(ver los archivos [`COPYING`](COPYING) y [`AUTHORS`](AUTHORS)). Se conservan todos
+los derechos de autor originales y la licencia. MiauCore es un esfuerzo de
+preservación independiente y sin ánimo de lucro, y **no** está afiliado a Blizzard
+Entertainment ni al proyecto TrinityCore.
