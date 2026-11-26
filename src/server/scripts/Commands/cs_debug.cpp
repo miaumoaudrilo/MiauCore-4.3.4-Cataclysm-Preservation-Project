@@ -980,10 +980,10 @@ public:
             else
             {
                 handler->PSendSysMessage(" - %02zu redirects being applied:", redirectInfo.size());
-                for (auto const& pair : redirectInfo)
+                for (auto const& redirect : redirectInfo)
                 {
-                    Unit* unit = ObjectAccessor::GetUnit(*target, pair.first);
-                    handler->PSendSysMessage(" |-- %02u%% to %s", pair.second, unit ? unit->GetName().c_str() : pair.first.ToString().c_str());
+                    Unit* unit = ObjectAccessor::GetUnit(*target, redirect.Target);
+                    handler->PSendSysMessage(" |-- %02u%% to %s", redirect.Percent, unit ? unit->GetName().c_str() : redirect.Target.ToString().c_str());
                 }
             }
         }

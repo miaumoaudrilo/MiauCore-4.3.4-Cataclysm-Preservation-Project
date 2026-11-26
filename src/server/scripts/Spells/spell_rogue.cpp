@@ -45,6 +45,7 @@ enum RogueSpells
     SPELL_ROGUE_BLADE_FLURRY                        = 13877,
     SPELL_ROGUE_BLADE_FLURRY_EXTRA_ATTACK           = 22482,
     SPELL_ROGUE_CHEAT_DEATH_COOLDOWN                = 31231,
+    SPELL_ROGUE_CHEAT_DEATH_DAMAGE_REDUCTION         = 45182,
     SPELL_ROGUE_CRIPPLING_POISON                    = 3409,
     SPELL_ROGUE_DEEP_INSIGHT                        = 84747,
     SPELL_ROGUE_ENERGETIC_RECOVERY                  = 4893,
@@ -155,7 +156,7 @@ class spell_rog_cheat_death : public AuraScript
 {
     bool Validate(SpellInfo const* /*spellInfo*/) override
     {
-        return ValidateSpellInfo({ SPELL_ROGUE_CHEAT_DEATH_COOLDOWN });
+        return ValidateSpellInfo({ SPELL_ROGUE_CHEAT_DEATH_COOLDOWN, SPELL_ROGUE_CHEAT_DEATH_DAMAGE_REDUCTION });
     }
 
     bool Load() override
@@ -177,9 +178,10 @@ class spell_rog_cheat_death : public AuraScript
             return;
 
         target->CastSpell(target, SPELL_ROGUE_CHEAT_DEATH_COOLDOWN, true);
-        target->GetSpellHistory()->AddCooldown(SPELL_ROGUE_CHEAT_DEATH_COOLDOWN, 0, std::chrono::minutes(1));
+        target->GetSpellHistory()->AddCooldown(SPELL_ROGUE_CHEAT_DEATH_COOLDOWN, 0, std::chrono::seconds(90));
+        target->CastSpell(target, SPELL_ROGUE_CHEAT_DEATH_DAMAGE_REDUCTION, true);
 
-        uint32 health10 = target->CountPctFromMaxHealth(10);
+        uint32 health10 = std::max<uint32>(1, target->CountPctFromMaxHealth(10));
 
         // hp > 10% - absorb hp till 10%
         if (target->GetHealth() > health10)
@@ -757,12 +759,13 @@ class spell_rog_tricks_of_the_trade_aura : public AuraScript
 
         Unit* rogue = GetTarget();
         Unit* target = ObjectAccessor::GetUnit(*rogue, _redirectTarget);
-        if (target)
+        if (target && target->IsAlive() && rogue->IsInRaidWith(target))
         {
             rogue->CastSpell(target, SPELL_ROGUE_TRICKS_OF_THE_TRADE_DMG_BOOST, aurEff);
             rogue->CastSpell(rogue, SPELL_ROGUE_TRICKS_OF_THE_TRADE_PROC, aurEff);
         }
-        Remove(AuraRemoveFlags::ByCancel);
+        // The proc aura now owns the redirect until its six-second duration ends.
+        Remove(AuraRemoveFlags::ByDefault);
     }
 
     void Register() override
@@ -818,6 +821,17 @@ class spell_rog_honor_among_thieves : public AuraScript
         return ValidateSpellInfo({ SPELL_ROGUE_HONOR_AMONG_THIEVES_TRIGGERED });
     }
 
+    bool CheckProc(ProcEventInfo& eventInfo)
+    {
+        Unit* rogue = GetCaster();
+        Unit* actor = eventInfo.GetActor();
+        if (!rogue || !rogue->IsPlayer() || !actor || !actor->IsPlayer())
+            return false;
+
+        Unit* target = ObjectAccessor::GetUnit(*rogue, rogue->GetTarget());
+        return target && rogue->IsValidAttackTarget(target, sSpellMgr->AssertSpellInfo(SPELL_ROGUE_HONOR_AMONG_THIEVES_TRIGGERED));
+    }
+
     void HandleProc(AuraEffect const* aurEff, ProcEventInfo& /*eventInfo*/)
     {
         PreventDefaultAction();
@@ -833,6 +847,7 @@ class spell_rog_honor_among_thieves : public AuraScript
 
     void Register() override
     {
+        DoCheckProc.Register(&spell_rog_honor_among_thieves::CheckProc);
         OnEffectProc.Register(&spell_rog_honor_among_thieves::HandleProc, EFFECT_0, SPELL_AURA_DUMMY);
     }
 };
@@ -847,12 +862,12 @@ class spell_rog_main_gauche : public AuraScript
 
     bool CheckProc(ProcEventInfo& eventInfo)
     {
-        Player* player = eventInfo.GetActor()->ToPlayer();
-        if (!player)
+        Player* player = GetTarget()->ToPlayer();
+        if (!player || !eventInfo.GetProcTarget() || !eventInfo.GetProcTarget()->IsAlive() ||
+            !player->GetWeaponForAttack(BASE_ATTACK, true))
             return false;
 
-        Item* item = player->GetWeaponForAttack(BASE_ATTACK);
-        if (!item || !item->IsEquipped())
+        if (SpellInfo const* spell = eventInfo.GetSpellInfo(); spell && spell->Id == SPELL_ROGUE_MAIN_GAUCHE)
             return false;
 
         if (!(eventInfo.GetTypeMask() & PROC_FLAG_MAIN_HAND_WEAPON_SWING))
@@ -865,9 +880,11 @@ class spell_rog_main_gauche : public AuraScript
     {
         PreventDefaultAction();
 
-        Player* caster = eventInfo.GetActor()->ToPlayer();
+        Player* caster = GetTarget()->ToPlayer();
         Unit* target = eventInfo.GetProcTarget();
-        Item* item = ASSERT_NOTNULL(caster->GetWeaponForAttack(BASE_ATTACK));
+        Item* item = caster->GetWeaponForAttack(BASE_ATTACK, true);
+        if (!item || !target || !target->IsAlive())
+            return;
 
         caster->CastSpell(target, SPELL_ROGUE_MAIN_GAUCHE, CastSpellExtraArgs(item).SetTriggeringAura(aurEff));
     }
@@ -934,7 +951,7 @@ class spell_rog_eviscerate : public SpellScript
     void CalculateDamage(Unit* victim, int32& /*damage*/, int32& flatMod, float& pctMod)
     {
         Player const* playerCaster = GetCaster()->ToPlayer();
-        uint8 comboPoints = playerCaster->GetComboPoints();
+        uint8 comboPoints = GetSpell()->GetComboPointsUsed();
         flatMod += static_cast<int32>(comboPoints * playerCaster->GetTotalAttackPowerValue(BASE_ATTACK) * 0.091f);
 
         // Eviscerate and Envenom Bonus Damage (item set effect)
@@ -945,23 +962,25 @@ class spell_rog_eviscerate : public SpellScript
             AddPct(pctMod, revealingStrike->GetAmount());
     }
 
-    void HandleSerratedBlades(SpellEffIndex /*effIndex*/)
+    void HandleFinishers()
     {
+        Unit* target = GetHitUnit();
+        if (!target || !(GetSpell()->GetHitMask() & (PROC_HIT_NORMAL | PROC_HIT_CRITICAL | PROC_HIT_ABSORB)))
+            return;
+
+        ObjectGuid const casterGuid = GetCaster()->GetGUID();
+        target->RemoveAurasDueToSpell(SPELL_ROGUE_REVEALING_STRIKE, casterGuid);
+
         AuraEffect const* blades = GetCaster()->GetDummyAuraEffect(SPELLFAMILY_ROGUE, ROGUE_ICON_ID_SERRATED_BLADES, EFFECT_0);
-        if (!blades)
-            return;
-
-        if (!roll_chance_i(blades->GetAmount() * GetCaster()->GetComboPoints()))
-            return;
-
-        if (AuraEffect const* rupture = GetHitUnit()->GetAuraEffect(SPELL_AURA_PERIODIC_DAMAGE, SPELLFAMILY_ROGUE, 0x00100000, 0, 0, GetCaster()->GetGUID()))
-            rupture->GetBase()->RefreshDuration(false);
+        if (blades && roll_chance_i(blades->GetAmount() * GetSpell()->GetComboPointsUsed()))
+            if (Aura* rupture = target->GetAura(SPELL_ROGUE_RUPTURE, casterGuid))
+                rupture->SetDuration(rupture->GetMaxDuration());
     }
 
     void Register() override
     {
         CalcDamage.Register(&spell_rog_eviscerate::CalculateDamage);
-        OnEffectHitTarget.Register(&spell_rog_eviscerate::HandleSerratedBlades, EFFECT_0, SPELL_EFFECT_SCHOOL_DAMAGE);
+        AfterHit.Register(&spell_rog_eviscerate::HandleFinishers);
     }
 };
 
@@ -991,7 +1010,7 @@ class spell_rog_envenom : public SpellScript
             return;
 
         Player const* player = caster->ToPlayer();
-        uint8 const comboPoints = player->GetComboPoints();
+        uint8 const comboPoints = GetSpell()->GetComboPointsUsed();
         if (!comboPoints)
             return;
 
@@ -1000,13 +1019,7 @@ class spell_rog_envenom : public SpellScript
         // Consume one stack of Deadly Poison per spent combo point to increase the damage dealt by Envenom
         if (AuraEffect const* aurEff = target->GetAuraEffect(SPELL_AURA_PERIODIC_DAMAGE, SPELLFAMILY_ROGUE, 0x00010000, 0, 0, caster->GetGUID()))
         {
-            uint8 consumedStacks = std::min<uint8>(comboPoints, aurEff->GetBase()->GetStackAmount());
-
-            // As of patch 4.0.1 Master Poisoner now always prevents Envenom from consuming Deadly Poison stacks
-            if (!player->HasSpell(SPELL_ROGUE_MASTER_POISONER))
-                aurEff->GetBase()->ModStackAmount(-consumedStacks);
-
-            damage *= consumedStacks;
+            damage *= std::min<uint8>(comboPoints, aurEff->GetBase()->GetStackAmount());
             damage += int32(player->GetTotalAttackPowerValue(BASE_ATTACK) * 0.09f * comboPoints);
         }
 
@@ -1014,18 +1027,31 @@ class spell_rog_envenom : public SpellScript
         if (AuraEffect* aurEff = caster->GetAuraEffect(SPELL_ROGUE_EVISCERATE_AND_ENVENOM_BONUS_DAMAGE, EFFECT_0))
             damage += comboPoints * aurEff->GetAmount();
 
-        if (AuraEffect* const revealingStrike = target->GetAuraEffect(SPELL_ROGUE_REVEALING_STRIKE, EFFECT_2, caster->GetGUID()))
-        {
+        if (AuraEffect const* revealingStrike = target->GetAuraEffect(SPELL_ROGUE_REVEALING_STRIKE, EFFECT_2, caster->GetGUID()))
             damage += CalculatePct(damage, revealingStrike->GetAmount());
-            revealingStrike->GetBase()->Remove();
-        }
 
         SetEffectValue(damage);
+    }
+
+    void ConsumeOnHit(SpellEffIndex /*effIndex*/)
+    {
+        Player* caster = GetCaster()->ToPlayer();
+        Unit* target = GetHitUnit();
+        uint8 const comboPoints = GetSpell()->GetComboPointsUsed();
+        if (!target || !target->IsAlive() || !comboPoints || target->IsImmunedToDamage(GetSpellInfo()))
+            return;
+
+        if (!caster->HasSpell(SPELL_ROGUE_MASTER_POISONER))
+            if (AuraEffect const* poison = target->GetAuraEffect(SPELL_AURA_PERIODIC_DAMAGE, SPELLFAMILY_ROGUE, 0x00010000, 0, 0, caster->GetGUID()))
+                poison->GetBase()->ModStackAmount(-std::min<uint8>(comboPoints, poison->GetBase()->GetStackAmount()));
+
+        target->RemoveAurasDueToSpell(SPELL_ROGUE_REVEALING_STRIKE, caster->GetGUID());
     }
 
     void Register() override
     {
         OnEffectLaunchTarget.Register(&spell_rog_envenom::ChangeDamage, EFFECT_0, SPELL_EFFECT_SCHOOL_DAMAGE);
+        OnEffectHitTarget.Register(&spell_rog_envenom::ConsumeOnHit, EFFECT_0, SPELL_EFFECT_SCHOOL_DAMAGE);
     }
 };
 
@@ -1209,10 +1235,10 @@ class spell_rog_combat_potency : public AuraScript
 {
     bool CheckProc(ProcEventInfo& eventInfo)
     {
-        if (eventInfo.GetSpellInfo())
-            return eventInfo.GetSpellInfo()->SpellFamilyFlags[2] == 0x00000002;
-        else if (eventInfo.GetDamageInfo())
-            return eventInfo.GetDamageInfo()->GetAttackType() == OFF_ATTACK;
+        if (SpellInfo const* spell = eventInfo.GetSpellInfo())
+            return spell->Id == SPELL_ROGUE_MAIN_GAUCHE;
+        if (DamageInfo const* damage = eventInfo.GetDamageInfo())
+            return damage->GetAttackType() == OFF_ATTACK;
 
         return false;
     }
@@ -1242,12 +1268,29 @@ class spell_rog_restless_blades : public AuraScript
             });
     }
 
-    void HandleProc(AuraEffect const* aurEff, ProcEventInfo& /*eventInfo*/)
+    bool CheckProc(ProcEventInfo& eventInfo)
+    {
+        Spell const* spell = eventInfo.GetProcSpell();
+        if (!spell || !spell->GetComboPointsUsed())
+            return false;
+
+        switch (spell->GetSpellInfo()->Id)
+        {
+            case 1943:  // Rupture
+            case 2098:  // Eviscerate
+            case 26679: // Deadly Throw
+            case 32645: // Envenom
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    void HandleProc(AuraEffect const* aurEff, ProcEventInfo& eventInfo)
     {
         PreventDefaultAction();
         Player* player = GetTarget()->ToPlayer();
-        int32 cooldownReduction = 0;
-        cooldownReduction -= player->GetComboPoints() * aurEff->GetAmount();
+        int32 const cooldownReduction = -eventInfo.GetProcSpell()->GetComboPointsUsed() * aurEff->GetAmount();
         player->GetSpellHistory()->ModifyCooldown(SPELL_ROGUE_ADRENALIN_RUSH, cooldownReduction);
         player->GetSpellHistory()->ModifyCooldown(SPELL_ROGUE_KILLING_SPREE, cooldownReduction);
         player->GetSpellHistory()->ModifyCooldown(SPELL_ROGUE_REDIRECT, cooldownReduction);
@@ -1256,6 +1299,7 @@ class spell_rog_restless_blades : public AuraScript
 
     void Register() override
     {
+        DoCheckProc.Register(&spell_rog_restless_blades::CheckProc);
         OnEffectProc.Register(&spell_rog_restless_blades::HandleProc, EFFECT_0, SPELL_AURA_DUMMY);
     }
 };
@@ -1490,6 +1534,23 @@ class spell_rog_blind : public AuraScript
     void Register() override
     {
         AfterEffectApply.Register(&spell_rog_blind::HandleGlyph, EFFECT_1, SPELL_AURA_MOD_CONFUSE, AURA_EFFECT_HANDLE_REAL);
+    }
+};
+
+// 14183 - Premeditation
+class spell_rog_premeditation : public AuraScript
+{
+    void CountTemporaryPoints(AuraEffect const* /*effect*/, int32& amount, bool& canBeRecalculated)
+    {
+        // The combo point gain is finalized after effects have been processed.
+        // The holder still has only its previous points when this aura is built.
+        amount = std::clamp(5 - int32(GetUnitOwner()->GetComboPoints()), 0, amount);
+        canBeRecalculated = false;
+    }
+
+    void Register() override
+    {
+        DoEffectCalcAmount.Register(&spell_rog_premeditation::CountTemporaryPoints, EFFECT_1, SPELL_AURA_RETAIN_COMBO_POINTS);
     }
 };
 
@@ -1819,6 +1880,7 @@ void AddSC_rogue_spell_scripts()
     RegisterSpellScript(spell_rog_pickpocket);
     RegisterSpellScript(spell_rog_preparation);
     RegisterSpellScript(spell_rog_prey_on_the_weak);
+    RegisterSpellScript(spell_rog_premeditation);
     RegisterSpellScript(spell_rog_recuperate);
     RegisterSpellScript(spell_rog_relentless_strikes);
     RegisterSpellScript(spell_rog_restless_blades);

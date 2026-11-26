@@ -3773,6 +3773,10 @@ void Spell::_cast(bool skipCheck)
         if (Player* playerCaster = m_caster->ToPlayer())
             playerCaster->UpdateCraftSkill(m_spellInfo);
 
+    if (m_needComboPoints)
+        if (Unit* caster = m_caster->ToUnit())
+            m_comboPointsAtCast = caster->GetComboPoints();
+
     // Powers have to be taken before SendSpellGo
     if (!(_triggeredCastFlags & TRIGGERED_IGNORE_POWER_COST))
         TakePower();

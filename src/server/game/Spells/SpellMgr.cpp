@@ -5545,6 +5545,12 @@ void SpellMgr::LoadSpellInfoCorrections()
         spellInfo->AttributesEx3 |= SPELL_ATTR3_DOT_STACKING_RULE;
     });
 
+    // Cheat Death reduces damage from all schools by 80% in Cataclysm.
+    ApplySpellFix({ 45182 }, [](SpellInfo* spellInfo)
+    {
+        spellInfo->Effects[EFFECT_0].ApplyAuraName = SPELL_AURA_MOD_DAMAGE_PERCENT_TAKEN;
+    });
+
     // Expose Armor
     ApplySpellFix({ 8647 }, [](SpellInfo* spellInfo)
     {

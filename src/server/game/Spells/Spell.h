@@ -475,6 +475,7 @@ class TC_GAME_API Spell
         Unit* GetOriginalCaster() const { return m_originalCaster; }
         SpellInfo const* GetSpellInfo() const { return m_spellInfo; }
         ProcFlagsHit GetHitMask() const { return m_hitMask; }
+        uint8 GetComboPointsUsed() const { return m_needComboPoints ? m_comboPointsAtCast : 0; }
         int32 GetPowerCost() const { return m_powerCost; }
 
         bool UpdatePointers();                              // must be used at call Spell code after time delay (non triggered spell cast/update spell call/etc)
@@ -534,6 +535,7 @@ class TC_GAME_API Spell
         bool m_referencedFromCurrentSpell;                  // mark as references to prevent deleted and access by dead pointers
         bool m_executedCurrently;                           // mark as executed to prevent deleted and access by dead pointers
         bool m_needComboPoints;
+        uint8 m_comboPointsAtCast = 0;
         uint8 m_applyMultiplierMask;
         float m_damageMultipliers[MAX_SPELL_EFFECTS];
 

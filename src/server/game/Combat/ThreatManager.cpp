@@ -20,6 +20,7 @@
 #include "CreatureAI.h"
 #include "CreatureGroups.h"
 #include "Containers.h"
+#include "GameTime.h"
 #include "MotionMaster.h"
 #include "Player.h"
 #include "TemporarySummon.h"
@@ -58,10 +59,47 @@ void ThreatReference::ScaleThreat(float factor)
     if (factor == 1.0f)
         return;
     _baseAmount *= factor;
+    _expiringAmount *= factor;
+    if (factor == 0.0f)
+        _expiringThreat.clear();
+    else
+        for (auto& [expiry, amount] : _expiringThreat)
+            amount *= factor;
     if (factor > 1.0f)
         HeapNotifyIncreased();
     else
         HeapNotifyDecreased();
+    _mgr._needClientUpdate = true;
+}
+
+void ThreatReference::AddExpiringThreat(float amount)
+{
+    auto const expiry = GameTime::GetGameTimeSteadyPoint() + std::chrono::seconds(30);
+    if (!_expiringThreat.empty() && _expiringThreat.back().first == expiry)
+        _expiringThreat.back().second += amount;
+    else
+        _expiringThreat.emplace_back(expiry, amount);
+
+    _expiringAmount += amount;
+    HeapNotifyIncreased();
+    _mgr._needClientUpdate = true;
+}
+
+void ThreatReference::ExpireThreat(std::chrono::steady_clock::time_point now)
+{
+    auto firstActive = _expiringThreat.begin();
+    while (firstActive != _expiringThreat.end() && firstActive->first <= now)
+    {
+        _expiringAmount -= firstActive->second;
+        ++firstActive;
+    }
+
+    if (firstActive == _expiringThreat.begin())
+        return;
+
+    _expiringThreat.erase(_expiringThreat.begin(), firstActive);
+    _expiringAmount = _expiringThreat.empty() ? 0.0f : std::max(0.0f, _expiringAmount);
+    HeapNotifyDecreased();
     _mgr._needClientUpdate = true;
 }
 
@@ -232,7 +270,12 @@ void ThreatManager::Update(uint32 tdiff)
         }
 
         if (!IsThreatListEmpty(true))
+        {
+            auto const now = GameTime::GetGameTimeSteadyPoint();
+            for (auto const& [guid, ref] : _myThreatListEntries)
+                ref->ExpireThreat(now);
             UpdateVictim();
+        }
 
         _updateTimer = THREAT_UPDATE_INTERVAL;
     }
@@ -376,6 +419,11 @@ void ThreatManager::EvaluateSuppressed(bool canExpire)
 
 void ThreatManager::AddThreat(Unit* target, float amount, SpellInfo const* spell, bool ignoreModifiers, bool ignoreRedirects)
 {
+    AddThreatInternal(target, amount, spell, ignoreModifiers, ignoreRedirects, false);
+}
+
+void ThreatManager::AddThreatInternal(Unit* target, float amount, SpellInfo const* spell, bool ignoreModifiers, bool ignoreRedirects, bool expires)
+{
     // step 1: we can shortcut if the spell has one of the NO_THREAT attrs set - nothing will happen
     if (spell)
     {
@@ -395,9 +443,9 @@ void ThreatManager::AddThreat(Unit* target, float amount, SpellInfo const* spell
         if (!combatMgr.SetInCombatWith(target))
             return;
         // traverse redirects and put them in combat, too
-        for (auto const& pair : target->GetThreatManager()._redirectInfo)
-            if (!combatMgr.IsInCombatWith(pair.first))
-                if (Unit* redirTarget = ObjectAccessor::GetUnit(*_owner, pair.first))
+        for (auto const& redirect : target->GetThreatManager()._redirectInfo)
+            if (!combatMgr.IsInCombatWith(redirect.Target))
+                if (Unit* redirTarget = ObjectAccessor::GetUnit(*_owner, redirect.Target))
                     combatMgr.SetInCombatWith(redirTarget);
         return;
     }
@@ -416,18 +464,19 @@ void ThreatManager::AddThreat(Unit* target, float amount, SpellInfo const* spell
             // intentional iteration by index - there's a nested AddThreat call further down that might cause AI calls which might modify redirect info through spells
             for (size_t i = 0; i < redirInfo.size(); ++i)
             {
-                auto const pair = redirInfo[i]; // (victim,pct)
+                auto const redirect = redirInfo[i];
                 Unit* redirTarget = nullptr;
-                auto it = _myThreatListEntries.find(pair.first); // try to look it up in our threat list first (faster)
+                auto it = _myThreatListEntries.find(redirect.Target); // try to look it up in our threat list first (faster)
                 if (it != _myThreatListEntries.end())
                     redirTarget = it->second->_victim;
                 else
-                    redirTarget = ObjectAccessor::GetUnit(*_owner, pair.first);
+                    redirTarget = ObjectAccessor::GetUnit(*_owner, redirect.Target);
 
                 if (redirTarget)
                 {
-                    float amountRedirected = CalculatePct(origAmount, pair.second);
-                    AddThreat(redirTarget, amountRedirected, spell, true, true);
+                    float amountRedirected = CalculatePct(origAmount, redirect.Percent);
+                    // Tricks of the Trade's transferred threat fades after 30 seconds.
+                    AddThreatInternal(redirTarget, amountRedirected, spell, true, true, redirect.SpellId == 57934);
                     amount -= amountRedirected;
                 }
             }
@@ -453,7 +502,7 @@ void ThreatManager::AddThreat(Unit* target, float amount, SpellInfo const* spell
             }
 
         if (ref->IsOnline())
-            ref->AddThreat(amount);
+            expires ? ref->AddExpiringThreat(amount) : ref->AddThreat(amount);
         return;
     }
 
@@ -464,7 +513,7 @@ void ThreatManager::AddThreat(Unit* target, float amount, SpellInfo const* spell
 
     ref->UpdateOffline();
     if (ref->IsOnline()) // we only add the threat if the ref is currently available
-        ref->AddThreat(amount);
+        expires ? ref->AddExpiringThreat(amount) : ref->AddThreat(amount);
 
     if (!_currentVictimRef)
         UpdateVictim();
@@ -922,7 +971,7 @@ void ThreatManager::UpdateRedirectInfo()
             uint32 thisPct = std::min<uint32>(100 - totalPct, victimPair.second);
             if (thisPct > 0)
             {
-                _redirectInfo.push_back({ victimPair.first, thisPct });
+                _redirectInfo.push_back({ victimPair.first, thisPct, pair.first });
                 totalPct += thisPct;
                 ASSERT(totalPct <= 100);
                 if (totalPct == 100)

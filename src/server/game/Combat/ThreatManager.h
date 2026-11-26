@@ -23,6 +23,7 @@
 #include "ObjectGuid.h"
 #include "SharedDefines.h"
 #include <array>
+#include <chrono>
 #include <unordered_map>
 #include <vector>
 
@@ -188,6 +189,7 @@ class TC_GAME_API ThreatManager
         static const CompareThreatLessThan CompareThreat;
         static bool CompareReferencesLT(ThreatReference const* a, ThreatReference const* b, float aWeight);
         static float CalculateModifiedThreat(float threat, Unit const* victim, SpellInfo const* spell);
+        void AddThreatInternal(Unit* target, float amount, SpellInfo const* spell, bool ignoreModifiers, bool ignoreRedirects, bool expires);
 
         // send opcodes (all for my own threat list)
         void SendClearAllThreatToClients() const;
@@ -225,7 +227,13 @@ class TC_GAME_API ThreatManager
 
         // redirect system (is kind of dumb, but that's because none of the redirection spells actually have any aura effect associated with them, so spellscript needs to deal with it)
         void UpdateRedirectInfo();
-        std::vector<std::pair<ObjectGuid, uint32>> _redirectInfo; // current redirection targets and percentages (updated from registry in ThreatManager::UpdateRedirectInfo)
+        struct RedirectInfo
+        {
+            ObjectGuid Target;
+            uint32 Percent;
+            uint32 SpellId;
+        };
+        std::vector<RedirectInfo> _redirectInfo;
         std::unordered_map<uint32, std::unordered_map<ObjectGuid, uint32>> _redirectRegistry; // spellid -> (victim -> pct); all redirection effects on us (removal individually managed by spell scripts because blizzard is dumb)
 
     public:
@@ -268,7 +276,7 @@ class TC_GAME_API ThreatReference
 
         Creature* GetOwner() const { return _owner; }
         Unit* GetVictim() const { return _victim; }
-        float GetThreat() const { return std::max<float>(_baseAmount + (float)_tempModifier, 0.0f); }
+        float GetThreat() const { return std::max<float>(_baseAmount + _expiringAmount + (float)_tempModifier, 0.0f); }
         OnlineState GetOnlineState() const { return _online; }
         bool IsOnline() const { return (_online >= ONLINE_STATE_ONLINE); }
         bool IsAvailable() const { return (_online > ONLINE_STATE_OFFLINE); }
@@ -279,6 +287,8 @@ class TC_GAME_API ThreatReference
         bool IsDetaunted() const { return _taunted == TAUNT_STATE_DETAUNT; }
 
         void AddThreat(float amount);
+        void AddExpiringThreat(float amount);
+        void ExpireThreat(std::chrono::steady_clock::time_point now);
         void ScaleThreat(float factor);
         void ModifyThreatByPercent(int32 percent) { if (percent) ScaleThreat(0.01f*float(100 + percent)); }
         void UpdateOffline();
@@ -309,6 +319,8 @@ class TC_GAME_API ThreatReference
         Unit* const _victim;
         OnlineState _online;
         float _baseAmount;
+        float _expiringAmount = 0.0f;
+        std::vector<std::pair<std::chrono::steady_clock::time_point, float>> _expiringThreat;
         int32 _tempModifier; // Temporary effects (auras with SPELL_AURA_MOD_TOTAL_THREAT) - set from victim's threatmanager in ThreatManager::UpdateMyTempModifiers
         TauntState _taunted;
 
