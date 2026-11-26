@@ -47,6 +47,9 @@ enum RogueSpells
     SPELL_ROGUE_CHEAT_DEATH_COOLDOWN                = 31231,
     SPELL_ROGUE_CHEAT_DEATH_DAMAGE_REDUCTION         = 45182,
     SPELL_ROGUE_CRIPPLING_POISON                    = 3409,
+    SPELL_ROGUE_FIND_WEAKNESS_R1                     = 51632,
+    SPELL_ROGUE_FIND_WEAKNESS_R2                     = 91023,
+    SPELL_ROGUE_FIND_WEAKNESS_DEBUFF                 = 91021,
     SPELL_ROGUE_DEEP_INSIGHT                        = 84747,
     SPELL_ROGUE_ENERGETIC_RECOVERY                  = 4893,
     SPELL_ROGUE_EVISCERATE_AND_ENVENOM_BONUS_DAMAGE = 37169,
@@ -1848,6 +1851,38 @@ class spell_rog_fan_of_knives : public SpellScript
         OnEffectHitTarget.Register(&spell_rog_fan_of_knives::HandleVilePoisons, EFFECT_0, SPELL_EFFECT_WEAPON_PERCENT_DAMAGE);
     }
 };
+
+// 51632, 91023 - Descubrir debilidad (Find Weakness): Emboscada, Garrote y Golpe bajo
+// aplican el perjuicio 91021, que hace que el pícaro ignore parte de la armadura (35%/70%).
+class spell_rog_find_weakness : public SpellScript
+{
+    bool Validate(SpellInfo const* /*spellInfo*/) override
+    {
+        return ValidateSpellInfo({ SPELL_ROGUE_FIND_WEAKNESS_DEBUFF });
+    }
+
+    void ApplyFindWeakness()
+    {
+        Unit* caster = GetCaster();
+        Unit* target = GetHitUnit();
+        if (!caster || !target)
+            return;
+
+        AuraEffect const* talent = caster->GetAuraEffect(SPELL_ROGUE_FIND_WEAKNESS_R2, EFFECT_0);
+        if (!talent)
+            talent = caster->GetAuraEffect(SPELL_ROGUE_FIND_WEAKNESS_R1, EFFECT_0);
+        if (!talent)
+            return;
+
+        caster->CastSpell(target, SPELL_ROGUE_FIND_WEAKNESS_DEBUFF,
+            CastSpellExtraArgs(true).AddSpellBP0(talent->GetAmount()));
+    }
+
+    void Register() override
+    {
+        AfterHit.Register(&spell_rog_find_weakness::ApplyFindWeakness);
+    }
+};
 }
 
 void AddSC_rogue_spell_scripts()
@@ -1881,6 +1916,7 @@ void AddSC_rogue_spell_scripts()
     RegisterSpellScript(spell_rog_preparation);
     RegisterSpellScript(spell_rog_prey_on_the_weak);
     RegisterSpellScript(spell_rog_premeditation);
+    RegisterSpellScript(spell_rog_find_weakness);
     RegisterSpellScript(spell_rog_recuperate);
     RegisterSpellScript(spell_rog_relentless_strikes);
     RegisterSpellScript(spell_rog_restless_blades);

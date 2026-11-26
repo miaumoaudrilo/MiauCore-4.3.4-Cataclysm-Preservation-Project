@@ -2939,6 +2939,13 @@ void Spell::EffectWeaponDmg(SpellEffIndex effIndex)
             mechanic = m_spellInfo->Effects[j].Mechanic;
     }
 
+    // Mecánica (MiauCore): Emboscada (8676) inflige un 44.7% más de daño con daga equipada (×1.447 del DBC).
+    if (m_spellInfo->Id == 8676)
+        if (Player const* ambushCaster = unitCaster->ToPlayer())
+            if (Item const* ambushWeapon = ambushCaster->GetWeaponForAttack(BASE_ATTACK, true))
+                if (ambushWeapon->GetTemplate()->GetSubClass() == ITEM_SUBCLASS_WEAPON_DAGGER)
+                    totalDamagePercentMod *= 1.447f;
+
     weaponDamage = int32(weaponDamage * totalDamagePercentMod);
 
     // prevent negative damage

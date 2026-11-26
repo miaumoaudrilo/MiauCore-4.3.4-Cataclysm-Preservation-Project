@@ -6,6 +6,17 @@ Registro de cambios notables del core. · Notable changes to the core.
 
 ## 🗡️ Pícaro · Rogue — 2026-11-26
 
+### 🔪 Emboscada y Find Weakness · Ambush & Find Weakness
+
+- **Emboscada (8676) · Ambush:** aplica el bonus de daga (**×1.447** de daño) cuando el
+  pícaro lleva daga en la mano principal (`EffectWeaponDmg`).
+  · Ambush now applies the dagger damage bonus (×1.447) with a dagger equipped.
+- **Find Weakness (51632/91023) · Descubrir debilidad:** nuevo `spell_rog_find_weakness`
+  en Emboscada (8676), Garrote (703) y Golpe bajo (1833): con el talento, aplican el
+  perjuicio 91021 (ignorar 35%/70% de armadura durante 10 s). *(El enlace del script
+  va por SQL local, fuera de este repo.)*
+  · New Find Weakness handling on Ambush, Garrote and Cheap Shot.
+
 Revisión amplia de la clase Pícaro y del sistema de amenaza que la soporta.
 · Broad pass over the Rogue class and the threat system that backs it.
 
