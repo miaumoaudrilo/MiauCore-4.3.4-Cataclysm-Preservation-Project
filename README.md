@@ -43,6 +43,26 @@
 
 ---
 
+## 🧭 Estado de scripting por clase · Per-class scripting status
+
+> 🇪🇸 Verificación **hechizo por hechizo** contra el DBC del cliente (build 15595):
+> comprobando el efecto/aura e índice de cada script. 🇬🇧 **Spell-by-spell** verification
+> against the client DBC (build 15595): effect/aura and index checked for every script.
+
+| Clase · Class | Estado · Status |
+|:---|:---|
+| 🗡️ Pícaro · Rogue | ✅ Completamente scripteada · Fully scripted |
+| 🔮 Brujo · Warlock | ✅ Completamente scripteada · Fully scripted |
+| ⚔️ Guerrero · Warrior | ✅ Completamente scripteada · Fully scripted |
+| 🛡️ Paladín · Paladin | 🚧 En progreso · In progress |
+
+![Pícaro](https://img.shields.io/badge/P%C3%ADcaro-verificado-success?style=flat-square)
+![Brujo](https://img.shields.io/badge/Brujo-verificado-success?style=flat-square)
+![Guerrero](https://img.shields.io/badge/Guerrero-verificado-success?style=flat-square)
+![Paladín](https://img.shields.io/badge/Palad%C3%ADn-en%20progreso-orange?style=flat-square)
+
+---
+
 ## 🪄 Hechizos · Spells
 
 > 🇪🇸 Las **10 clases** auditadas contra el DBC del cliente (build 15595). El **Mago**
