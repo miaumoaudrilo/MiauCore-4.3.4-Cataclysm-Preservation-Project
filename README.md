@@ -54,12 +54,12 @@
 | 🗡️ Pícaro · Rogue | ✅ Completamente scripteada · Fully scripted |
 | 🔮 Brujo · Warlock | ✅ Completamente scripteada · Fully scripted |
 | ⚔️ Guerrero · Warrior | ✅ Completamente scripteada · Fully scripted |
-| 🛡️ Paladín · Paladin | 🚧 En progreso · In progress |
+| 🛡️ Paladín · Paladin | ✅ Completamente scripteada · Fully scripted |
 
 ![Pícaro](https://img.shields.io/badge/P%C3%ADcaro-verificado-success?style=flat-square)
 ![Brujo](https://img.shields.io/badge/Brujo-verificado-success?style=flat-square)
 ![Guerrero](https://img.shields.io/badge/Guerrero-verificado-success?style=flat-square)
-![Paladín](https://img.shields.io/badge/Palad%C3%ADn-en%20progreso-orange?style=flat-square)
+![Paladín](https://img.shields.io/badge/Palad%C3%ADn-verificado-success?style=flat-square)
 
 ---
 
@@ -80,12 +80,11 @@
 
 > 🇪🇸 Un **NPC de bienvenida** (apariencia de Alexstrasza) que sube al jugador a 85,
 > le da oro, lo teletransporta a la capital y autocompleta las cadenas de inicio de
-> CM / Huargen / Goblin. La **zona de inicio de los No-Muertos (Deathknell)** fue
-> realineada: posiciones de NPCs, Agatha/Val'kyr y cadenas de misión ajustadas a 4.3.4.
+> CM / Huargen / Goblin.
 >
 > 🇬🇧 A **welcome NPC** (Alexstrasza's look) that levels the player to 85, grants
 > gold, teleports to the faction capital and auto-completes the DK/Worgen/Goblin
-> starting chains. The **Undead starting zone (Deathknell)** was realigned to match 4.3.4.
+> starting chains.
 
 ## 🛡️ Seguridad · Security
 
@@ -118,10 +117,6 @@
 > 🇬🇧 `game`, `authserver` and `worldserver` **compile cleanly**; the server
 > **boots** (`World initialized`) with **0 DB errors**. Verified: builds, boots,
 > database loads.
-
-> [!WARNING]
-> 🇪🇸 Algunos arreglos de hechizos aún merecen **prueba real en juego** con jugadores.
-> 🇬🇧 Some gameplay spell fixes still deserve **live in-game testing** with players.
 
 ---
 
