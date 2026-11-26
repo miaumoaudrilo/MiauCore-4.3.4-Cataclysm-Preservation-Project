@@ -1889,25 +1889,6 @@ class spell_warl_shadowburn_glyph : public SpellScript
 
 namespace Spells::Warlock
 {
-// -63156 - Eradication: only procs from spells cast on a target at or below 25% health (effect 1)
-class spell_warl_eradication : public AuraScript
-{
-    bool CheckProc(ProcEventInfo& eventInfo)
-    {
-        Unit* target = eventInfo.GetProcTarget();
-        AuraEffect const* threshold = GetEffect(EFFECT_1);
-        return target && threshold && target->GetHealthPct() <= float(threshold->GetAmount());
-    }
-
-    void Register() override
-    {
-        DoCheckProc.Register(&spell_warl_eradication::CheckProc);
-    }
-};
-}
-
-namespace Spells::Warlock
-{
 // 46157 - Hand of Gul'dan (summoned at the impact point of Hand of Gul'dan, 71521)
 // Curse of Gul'dan (86000): 4 yd area aura, the warlock's demons have +10% crit chance against targets inside (Unit.cpp).
 // Aura of Foreboding (89604 / 89605): enemies within 4 yd are rooted for 2 / 3 sec (93974 / 93987) and, if they are
@@ -2065,7 +2046,6 @@ void AddSC_warlock_spell_scripts()
     RegisterSpellScript(spell_warl_impending_doom);
     RegisterCreatureAI(npc_warl_hand_of_guldan);
     RegisterSpellScript(spell_warl_aura_of_foreboding_stun);
-    RegisterSpellScript(spell_warl_eradication);
     RegisterSpellScript(spell_warl_shadowburn_glyph);
     RegisterSpellScript(spell_warl_nether_protection);
     RegisterSpellScript(spell_warl_aftermath);
