@@ -32,6 +32,7 @@
 #include "Log.h"
 #include "Map.h"
 #include "MotionMaster.h"
+#include "LFGPackets.h"
 #include "ObjectAccessor.h"
 #include "ObjectMgr.h"
 #include "Player.h"
@@ -575,6 +576,15 @@ void LFGMgr::JoinLfg(Player* player, uint8 roles, LfgDungeonSet& dungeons, const
     }
 
     SetComment(guid, comment);
+
+    // Raid Browser (MiauCore): raid-type slots are a manual listing board, not the auto-match queue.
+    if (isRaid)
+    {
+        RaidBrowserJoin(player, roles, dungeons, comment);
+        player->GetSession()->SendLfgJoinResult(joinData);
+        return;
+    }
+
     if (rDungeonId && !grp && GetShortageRoleMask(rDungeonId) & roles)
         SetEnligibleForShortageRewards(guid, true);
 
@@ -671,6 +681,10 @@ void LFGMgr::LeaveLfg(ObjectGuid guid, bool disconnected)
         case LFG_STATE_QUEUED:
         case LFG_STATE_RAIDBROWSER:
         {
+            // Raid Browser (MiauCore): drop the player's listings and notify watchers
+            if (state == LFG_STATE_RAIDBROWSER)
+                RaidBrowserLeaveAll(guid);
+
             lfg::LfgUpdateType type = state == LFG_STATE_QUEUED ?
                 LFG_UPDATETYPE_REMOVED_FROM_QUEUE : LFG_UPDATETYPE_LEAVE_RAIDBROWSER;
             if (gguid)
@@ -739,6 +753,175 @@ void LFGMgr::LeaveLfg(ObjectGuid guid, bool disconnected)
     }
 
     SetEnligibleForShortageRewards(guid, false);
+}
+
+// ==== Raid Browser (MiauCore 4.3.4): manual listing/browsing board for raid-type slots ====
+
+void LFGMgr::RaidBrowserJoin(Player* player, uint8 roles, LfgDungeonSet const& dungeons, std::string const& comment)
+{
+    if (!player)
+        return;
+
+    ObjectGuid guid = player->GetGUID();
+
+    // Record selection/state so status reporting, comment changes and cleanup all work
+    SetComment(guid, comment);
+    SetRoles(guid, roles);
+    SetSelectedDungeons(guid, dungeons);
+    SetState(guid, LFG_STATE_RAIDBROWSER);
+
+    WorldPackets::LFG::RideTicket ticket;
+    ticket.RequesterGuid = guid;
+    ticket.Id = GetQueueId(guid);
+    ticket.Type = WorldPackets::LFG::RideType::Lfg;
+    ticket.Time = int32(GameTime::GetGameTime());
+    SetTicket(guid, ticket);
+
+    for (uint32 dungeonId : dungeons)
+    {
+        LFGDungeonData const* dungeon = GetLFGDungeon(dungeonId);
+        if (!dungeon || dungeon->type != LFG_TYPE_RAID)
+            continue;
+
+        RaidBrowserApplicant& app = _raidListings[dungeon->id][guid];
+        app.roles = roles;
+        app.comment = comment;
+
+        RaidBrowserBroadcast(dungeon->id, guid, false);
+    }
+
+    player->GetSession()->SendLfgUpdateStatus(LfgUpdateData(LFG_UPDATETYPE_JOIN_RAIDBROWSER, dungeons, comment), false);
+    TC_LOG_DEBUG("lfg", "RaidBrowserJoin: %s listed on %u raid slot(s)", guid.ToString().c_str(), uint32(dungeons.size()));
+}
+
+void LFGMgr::RaidBrowserLeaveAll(ObjectGuid guid)
+{
+    for (auto itSlot = _raidListings.begin(); itSlot != _raidListings.end(); ++itSlot)
+    {
+        auto itApp = itSlot->second.find(guid);
+        if (itApp == itSlot->second.end())
+            continue;
+
+        itSlot->second.erase(itApp);
+        RaidBrowserBroadcast(itSlot->first, guid, true);
+    }
+
+    // Stop this player from watching any slot too
+    for (auto& watchPair : _raidWatchers)
+        watchPair.second.erase(guid);
+}
+
+void LFGMgr::RaidBrowserRequestList(Player* viewer, uint32 slot)
+{
+    if (!viewer)
+        return;
+
+    uint32 norm = slot & 0x00FFFFFF;
+    LFGDungeonData const* dungeon = GetLFGDungeon(norm);
+    if (!dungeon || dungeon->type != LFG_TYPE_RAID)
+        return;
+
+    _raidWatchers[norm].insert(viewer->GetGUID());
+
+    WorldPackets::LFG::LFGSearchResults results;
+    results.Ticket.RequesterGuid = viewer->GetGUID();
+    results.Ticket.Id = GetQueueId(viewer->GetGUID());
+    results.Ticket.Type = WorldPackets::LFG::RideType::Lfg;
+    results.Ticket.Time = int32(GameTime::GetGameTime());
+    results.SlotID = dungeon->Entry();
+    results.Incremental = false;
+
+    auto itSlot = _raidListings.find(norm);
+    if (itSlot != _raidListings.end())
+    {
+        // Lazily prune offline applicants while building the list
+        for (auto itApp = itSlot->second.begin(); itApp != itSlot->second.end();)
+        {
+            Player* applicant = ObjectAccessor::FindConnectedPlayer(itApp->first);
+            if (!applicant)
+            {
+                itApp = itSlot->second.erase(itApp);
+                continue;
+            }
+
+            WorldPackets::LFG::ClientLFGSearchResultPlayer entry;
+            RaidBrowserBuildPlayer(entry, applicant, itApp->second);
+            results.Players.push_back(std::move(entry));
+            ++itApp;
+        }
+    }
+
+    results.CountTotalPlayers = uint32(results.Players.size());
+    results.CountTotalParties = uint32(results.Parties.size());
+    viewer->GetSession()->SendPacket(results.Write());
+}
+
+void LFGMgr::RaidBrowserStopList(ObjectGuid guid, uint32 slot)
+{
+    uint32 norm = slot & 0x00FFFFFF;
+    auto it = _raidWatchers.find(norm);
+    if (it != _raidWatchers.end())
+        it->second.erase(guid);
+}
+
+void LFGMgr::RaidBrowserBroadcast(uint32 normSlot, ObjectGuid applicant, bool removed)
+{
+    auto itWatch = _raidWatchers.find(normSlot);
+    if (itWatch == _raidWatchers.end() || itWatch->second.empty())
+        return;
+
+    LFGDungeonData const* dungeon = GetLFGDungeon(normSlot);
+    if (!dungeon)
+        return;
+
+    Player* applicantPlayer = removed ? nullptr : ObjectAccessor::FindConnectedPlayer(applicant);
+
+    for (auto itGuid = itWatch->second.begin(); itGuid != itWatch->second.end();)
+    {
+        Player* viewer = ObjectAccessor::FindConnectedPlayer(*itGuid);
+        if (!viewer)
+        {
+            itGuid = itWatch->second.erase(itGuid);
+            continue;
+        }
+
+        WorldPackets::LFG::LFGSearchResults results;
+        results.Ticket.RequesterGuid = viewer->GetGUID();
+        results.Ticket.Id = GetQueueId(viewer->GetGUID());
+        results.Ticket.Type = WorldPackets::LFG::RideType::Lfg;
+        results.Ticket.Time = int32(GameTime::GetGameTime());
+        results.SlotID = dungeon->Entry();
+        results.Incremental = true;
+
+        if (removed || !applicantPlayer)
+            results.Removes.push_back(applicant);
+        else
+        {
+            WorldPackets::LFG::ClientLFGSearchResultPlayer entry;
+            RaidBrowserBuildPlayer(entry, applicantPlayer, _raidListings[normSlot][applicant]);
+            results.Players.push_back(std::move(entry));
+        }
+
+        viewer->GetSession()->SendPacket(results.Write());
+        ++itGuid;
+    }
+}
+
+void LFGMgr::RaidBrowserBuildPlayer(WorldPackets::LFG::ClientLFGSearchResultPlayer& out, Player* player, RaidBrowserApplicant const& app) const
+{
+    out.Guid = player->GetGUID();
+    out.ChangeMask = 0xFFFFFFFF; // all fields valid on a full send
+    out.Level = player->getLevel();
+    out.ChrClass = player->getClass();
+    out.Race = player->getRace();
+    out.AvgItemLevel = player->GetAverageItemLevel();
+    out.MaxHealth = uint32(player->GetMaxHealth());
+    out.MaxMana = player->GetMaxPower(POWER_MANA);
+    out.AttackPower = uint32(player->GetTotalAttackPowerValue(BASE_ATTACK));
+    out.Armor = player->GetArmor();
+    out.RolesDesired = app.roles;
+    out.Area = player->GetZoneId();
+    out.Comment = app.comment;
 }
 
 WorldPackets::LFG::RideTicket const* LFGMgr::GetTicket(ObjectGuid guid) const

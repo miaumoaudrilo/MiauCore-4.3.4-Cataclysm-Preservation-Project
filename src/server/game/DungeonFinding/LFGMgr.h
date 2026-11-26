@@ -38,6 +38,7 @@ namespace WorldPackets
     namespace LFG
     {
         struct RideTicket;
+        struct ClientLFGSearchResultPlayer;
     }
 }
 
@@ -425,6 +426,16 @@ class TC_GAME_API LFGMgr
         void JoinLfg(Player* player, uint8 roles, LfgDungeonSet& dungeons, std::string const& comment);
         /// Leaves lfg
         void LeaveLfg(ObjectGuid guid, bool disconnected = false);
+
+        // Raid Browser (MiauCore 4.3.4): manual listing/browsing board for raid-type slots.
+        /// List a player (or group leader) on the raid browser for the given raid slots
+        void RaidBrowserJoin(Player* player, uint8 roles, LfgDungeonSet const& dungeons, std::string const& comment);
+        /// Remove a player from every raid browser listing and notify watchers
+        void RaidBrowserLeaveAll(ObjectGuid guid);
+        /// A player opened the browser for a slot: start watching it and receive the full list (CMSG_LFG_LFR_JOIN)
+        void RaidBrowserRequestList(Player* viewer, uint32 slot);
+        /// A player closed the browser for a slot: stop watching it (CMSG_LFG_LFR_LEAVE)
+        void RaidBrowserStopList(ObjectGuid guid, uint32 slot);
         /// Gets unique join queue data
         WorldPackets::LFG::RideTicket const* GetTicket(ObjectGuid guid) const;
 
@@ -501,6 +512,17 @@ class TC_GAME_API LFGMgr
         uint32 m_QueueTimer;                               ///< used to check interval of update
         uint32 m_lfgProposalId;                            ///< used as internal counter for proposals
         uint32 m_options;                                  ///< Stores config options
+
+        // Raid Browser (MiauCore 4.3.4)
+        struct RaidBrowserApplicant
+        {
+            uint8 roles = 0;
+            std::string comment;
+        };
+        void RaidBrowserBuildPlayer(WorldPackets::LFG::ClientLFGSearchResultPlayer& out, Player* player, RaidBrowserApplicant const& app) const;
+        void RaidBrowserBroadcast(uint32 normSlot, ObjectGuid applicant, bool removed);
+        std::map<uint32 /*normalized slot id*/, std::map<ObjectGuid, RaidBrowserApplicant>> _raidListings;
+        std::map<uint32 /*normalized slot id*/, GuidSet /*watchers*/> _raidWatchers;
 
         LfgQueueContainer QueuesStore;                     ///< Queues
         LfgCachedDungeonContainer CachedDungeonMapStore;   ///< Stores all dungeons by groupType

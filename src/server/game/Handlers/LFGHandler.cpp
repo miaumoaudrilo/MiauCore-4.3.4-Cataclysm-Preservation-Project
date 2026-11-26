@@ -297,7 +297,8 @@ void WorldSession::HandleLfrJoinOpcode(WorldPacket& recvData)
     recvData >> entry;
     TC_LOG_DEBUG("lfg", "CMSG_LFG_LFR_JOIN %s dungeon entry: %u",
         GetPlayerInfo().c_str(), entry);
-    //SendLfrUpdateListOpcode(entry);
+    // Raid Browser (MiauCore): start watching this raid slot and send the current listing
+    sLFGMgr->RaidBrowserRequestList(GetPlayer(), entry);
 }
 
 void WorldSession::HandleLfrLeaveOpcode(WorldPacket& recvData)
@@ -306,7 +307,8 @@ void WorldSession::HandleLfrLeaveOpcode(WorldPacket& recvData)
     recvData >> dungeonId;
     TC_LOG_DEBUG("lfg", "CMSG_LFG_LFR_LEAVE %s dungeonId: %u",
         GetPlayerInfo().c_str(), dungeonId);
-    //sLFGMgr->LeaveLfr(GetPlayer(), dungeonId);
+    // Raid Browser (MiauCore): stop watching this raid slot
+    sLFGMgr->RaidBrowserStopList(GetPlayer()->GetGUID(), dungeonId);
 }
 
 void WorldSession::HandleLfgGetStatus(WorldPacket& /*recvData*/)
